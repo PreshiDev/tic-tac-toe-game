@@ -55,24 +55,58 @@ button:hover { background: #1d4ed8; }
 
 .cell:hover { background: #334155; }
 
-#status {
-    margin-top: 10px;
-    font-size: 18px;
+#status { font-size: 18px; }
+
+.room-box input {
+    width: 90%;
+    max-width: 420px;
+    font-size: 14px;
 }
 
-/* 📱 MOBILE VIEW */
+/* 🎉 MODAL */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: #020617;
+    padding: 30px;
+    border-radius: 16px;
+    max-width: 300px;
+    text-align: center;
+    animation: pop 0.3s ease;
+}
+
+.modal-content h2 {
+    font-size: 28px;
+    margin-bottom: 10px;
+}
+
+.modal-content p {
+    font-size: 48px;
+}
+
+@keyframes pop {
+    from { transform: scale(0.7); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
 @media (max-width: 600px) {
     .board {
         grid-template-columns: repeat(3, 28vw);
         gap: 4vw;
     }
-
     .cell {
         width: 28vw;
         height: 28vw;
         font-size: 18vw;
     }
-
     button, select, input {
         width: 90%;
         font-size: 18px;
@@ -96,9 +130,16 @@ button:hover { background: #1d4ed8; }
 <button onclick="startVsComputer()">Play vs Computer</button>
 <button onclick="createRoom()">Create Multiplayer Room</button>
 
+<div class="room-box" id="roomBox" style="display:none;">
+    <input id="roomCode" readonly>
+    <button onclick="copyCode()">Copy Code</button>
+    <input id="roomLink" readonly>
+    <button onclick="copyLink()">Copy Link</button>
+</div>
+
 <br>
 
-<input id="roomInput" placeholder="Enter Room Code">
+<input id="roomInput" placeholder="Paste Room Code">
 <button onclick="joinRoom()">Join Room</button>
 
 <p id="status"></p>
@@ -117,6 +158,15 @@ button:hover { background: #1d4ed8; }
 
 <button onclick="resetGame()">Reset</button>
 
+<!-- 🎉 RESULT MODAL -->
+<div class="modal" id="resultModal">
+    <div class="modal-content">
+        <p id="resultEmoji">🎉</p>
+        <h2 id="resultText"></h2>
+        <button onclick="closeModal()">Play Again</button>
+    </div>
+</div>
+
 <script src="https://unpkg.com/simple-peer/simplepeer.min.js"></script>
 
 <script>
@@ -126,10 +176,9 @@ let mode = null;
 let peer = null;
 let mySymbol = "X";
 let difficulty = "easy";
+let lastSignal = "";
 
 const cells = document.querySelectorAll(".cell");
-const statusText = document.getElementById("status");
-
 cells.forEach(c => c.onclick = () => makeMove(c.dataset.i));
 
 const wins = [
@@ -146,78 +195,42 @@ function checkWin(p) {
     return wins.some(w => w.every(i => board[i] === p));
 }
 
+function showResult(type) {
+    const modal = document.getElementById("resultModal");
+    const text = document.getElementById("resultText");
+    const emoji = document.getElementById("resultEmoji");
+
+    if (type === "win") {
+        text.textContent = "You Win!";
+        emoji.textContent = "🏆";
+    } else if (type === "lose") {
+        text.textContent = "You Lose!";
+        emoji.textContent = "😭";
+    } else {
+        text.textContent = "It's a Draw!";
+        emoji.textContent = "🤝";
+    }
+
+    modal.style.display = "flex";
+}
+
+function closeModal() {
+    document.getElementById("resultModal").style.display = "none";
+    resetGame();
+}
+
 /* ---------- COMPUTER MODE ---------- */
 function startVsComputer() {
     resetGame();
     mode = "ai";
     difficulty = document.getElementById("difficulty").value;
-    statusText.textContent = `You are X | Difficulty: ${difficulty.toUpperCase()}`;
 }
 
 function aiMove() {
-    let move;
-
-    if (difficulty === "easy") {
-        move = randomMove();
-    } else if (difficulty === "medium") {
-        move = Math.random() < 0.5 ? randomMove() : bestMove();
-    } else {
-        move = bestMove();
-    }
-
-    board[move] = "O";
-    updateUI();
-}
-
-function randomMove() {
     let empty = board.map((v,i)=>v==""?i:null).filter(v=>v!==null);
-    return empty[Math.floor(Math.random()*empty.length)];
-}
-
-/* ---------- HARD AI (MINIMAX) ---------- */
-function bestMove() {
-    let bestScore = -Infinity;
-    let move;
-    board.forEach((v,i)=>{
-        if (v==="") {
-            board[i]="O";
-            let score = minimax(board,0,false);
-            board[i]="";
-            if (score > bestScore) {
-                bestScore = score;
-                move = i;
-            }
-        }
-    });
-    return move;
-}
-
-function minimax(b,depth,isMax) {
-    if (checkWin("O")) return 10-depth;
-    if (checkWin("X")) return depth-10;
-    if (!b.includes("")) return 0;
-
-    if (isMax) {
-        let best = -Infinity;
-        b.forEach((v,i)=>{
-            if (v==="") {
-                b[i]="O";
-                best = Math.max(best, minimax(b,depth+1,false));
-                b[i]="";
-            }
-        });
-        return best;
-    } else {
-        let best = Infinity;
-        b.forEach((v,i)=>{
-            if (v==="") {
-                b[i]="X";
-                best = Math.min(best, minimax(b,depth+1,true));
-                b[i]="";
-            }
-        });
-        return best;
-    }
+    if (!empty.length) return;
+    board[empty[Math.floor(Math.random()*empty.length)]] = "O";
+    updateUI();
 }
 
 /* ---------- MULTIPLAYER ---------- */
@@ -225,66 +238,79 @@ function createRoom() {
     resetGame();
     mode = "mp";
     mySymbol = "X";
-
     peer = new SimplePeer({ initiator:true, trickle:false });
-    peer.on("signal", d => alert("Room Code:\n"+btoa(JSON.stringify(d))));
+
+    peer.on("signal", d => {
+        lastSignal = btoa(JSON.stringify(d));
+        roomBox.style.display = "block";
+        roomCode.value = lastSignal;
+        roomLink.value = location.origin + location.pathname + "#room=" + lastSignal;
+    });
+
     peer.on("data", d => syncState(JSON.parse(d)));
-    statusText.textContent = "Waiting for player...";
 }
 
-function joinRoom() {
+function joinRoom(code=null) {
     resetGame();
     mode = "mp";
     mySymbol = "O";
-
-    const code = document.getElementById("roomInput").value;
-    if (!code) return alert("Enter room code");
-
+    const joinCode = code || roomInput.value;
     peer = new SimplePeer({ initiator:false, trickle:false });
-    peer.signal(JSON.parse(atob(code)));
+    peer.signal(JSON.parse(atob(joinCode)));
     peer.on("data", d => syncState(JSON.parse(d)));
-    statusText.textContent = "Connected!";
 }
 
 function syncState(d) {
     board = d.board;
     currentPlayer = d.currentPlayer;
     updateUI();
-    statusText.textContent =
-        currentPlayer === mySymbol ? "Your turn" : "Opponent's turn";
 }
 
-/* ---------- GAME LOGIC ---------- */
+/* ---------- GAME ---------- */
 function makeMove(i) {
-    if (board[i] !== "") return;
-    if (mode === "mp" && currentPlayer !== mySymbol) return;
+    if (board[i] || (mode==="mp" && currentPlayer!==mySymbol)) return;
 
     board[i] = currentPlayer;
-    currentPlayer = currentPlayer === "X" ? "O" : "X";
     updateUI();
 
-    if (checkWin(board[i])) {
-        statusText.textContent = board[i] + " wins!";
+    if (checkWin(currentPlayer)) {
+        if (mode === "ai") showResult(currentPlayer==="X"?"win":"lose");
+        else showResult(currentPlayer===mySymbol?"win":"lose");
         return;
     }
 
-    if (mode === "ai" && currentPlayer === "O") {
-        setTimeout(() => {
-            aiMove();
-            currentPlayer = "X";
-        }, 300);
+    if (!board.includes("")) {
+        showResult("draw");
+        return;
     }
 
-    if (mode === "mp") {
-        peer.send(JSON.stringify({ board, currentPlayer }));
+    currentPlayer = currentPlayer==="X"?"O":"X";
+
+    if (mode==="ai" && currentPlayer==="O") {
+        setTimeout(() => { aiMove(); currentPlayer="X"; }, 300);
     }
+
+    if (mode==="mp") peer.send(JSON.stringify({board,currentPlayer}));
 }
 
 function resetGame() {
     board = Array(9).fill("");
     currentPlayer = "X";
     updateUI();
-    statusText.textContent = "";
+}
+
+function copyCode() {
+    navigator.clipboard.writeText(lastSignal);
+    alert("Room code copied!");
+}
+
+function copyLink() {
+    navigator.clipboard.writeText(roomLink.value);
+    alert("Room link copied!");
+}
+
+if (location.hash.startsWith("#room=")) {
+    joinRoom(location.hash.replace("#room=",""));
 }
 </script>
 
