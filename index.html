@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tic Tac Toe – Multiplayer</title>
 
 <style>
@@ -10,15 +11,16 @@ body {
     background: #0f172a;
     color: white;
     text-align: center;
+    padding: 10px;
 }
 
-h1 { margin-top: 20px; }
+h1 { margin-top: 10px; }
 
-button, input {
-    padding: 10px 14px;
+button, input, select {
+    padding: 12px 16px;
     margin: 6px;
     font-size: 16px;
-    border-radius: 6px;
+    border-radius: 8px;
     border: none;
 }
 
@@ -32,27 +34,50 @@ button:hover { background: #1d4ed8; }
 
 .board {
     display: grid;
-    grid-template-columns: repeat(3, 100px);
-    gap: 10px;
+    grid-template-columns: repeat(3, 120px);
+    gap: 12px;
     justify-content: center;
     margin: 20px auto;
 }
 
 .cell {
-    width: 100px;
-    height: 100px;
+    width: 120px;
+    height: 120px;
     background: #1e293b;
-    font-size: 48px;
+    font-size: 64px;
+    font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    border-radius: 10px;
+    border-radius: 14px;
 }
 
 .cell:hover { background: #334155; }
 
-#status { margin-top: 10px; font-size: 18px; }
+#status {
+    margin-top: 10px;
+    font-size: 18px;
+}
+
+/* 📱 MOBILE VIEW */
+@media (max-width: 600px) {
+    .board {
+        grid-template-columns: repeat(3, 28vw);
+        gap: 4vw;
+    }
+
+    .cell {
+        width: 28vw;
+        height: 28vw;
+        font-size: 18vw;
+    }
+
+    button, select, input {
+        width: 90%;
+        font-size: 18px;
+    }
+}
 </style>
 </head>
 
@@ -60,10 +85,19 @@ button:hover { background: #1d4ed8; }
 
 <h1>Tic Tac Toe</h1>
 
+<select id="difficulty">
+    <option value="easy">Easy</option>
+    <option value="medium">Medium</option>
+    <option value="hard">Hard</option>
+</select>
+
+<br>
+
 <button onclick="startVsComputer()">Play vs Computer</button>
 <button onclick="createRoom()">Create Multiplayer Room</button>
 
 <br>
+
 <input id="roomInput" placeholder="Enter Room Code">
 <button onclick="joinRoom()">Join Room</button>
 
@@ -83,7 +117,6 @@ button:hover { background: #1d4ed8; }
 
 <button onclick="resetGame()">Reset</button>
 
-<!-- Simple Peer (WebRTC) -->
 <script src="https://unpkg.com/simple-peer/simplepeer.min.js"></script>
 
 <script>
@@ -92,6 +125,7 @@ let currentPlayer = "X";
 let mode = null;
 let peer = null;
 let mySymbol = "X";
+let difficulty = "easy";
 
 const cells = document.querySelectorAll(".cell");
 const statusText = document.getElementById("status");
@@ -116,15 +150,74 @@ function checkWin(p) {
 function startVsComputer() {
     resetGame();
     mode = "ai";
-    statusText.textContent = "You are X";
+    difficulty = document.getElementById("difficulty").value;
+    statusText.textContent = `You are X | Difficulty: ${difficulty.toUpperCase()}`;
 }
 
 function aiMove() {
-    let empty = board.map((v,i)=>v==""?i:null).filter(v=>v!==null);
-    if (empty.length === 0) return;
-    let m = empty[Math.floor(Math.random()*empty.length)];
-    board[m] = "O";
+    let move;
+
+    if (difficulty === "easy") {
+        move = randomMove();
+    } else if (difficulty === "medium") {
+        move = Math.random() < 0.5 ? randomMove() : bestMove();
+    } else {
+        move = bestMove();
+    }
+
+    board[move] = "O";
     updateUI();
+}
+
+function randomMove() {
+    let empty = board.map((v,i)=>v==""?i:null).filter(v=>v!==null);
+    return empty[Math.floor(Math.random()*empty.length)];
+}
+
+/* ---------- HARD AI (MINIMAX) ---------- */
+function bestMove() {
+    let bestScore = -Infinity;
+    let move;
+    board.forEach((v,i)=>{
+        if (v==="") {
+            board[i]="O";
+            let score = minimax(board,0,false);
+            board[i]="";
+            if (score > bestScore) {
+                bestScore = score;
+                move = i;
+            }
+        }
+    });
+    return move;
+}
+
+function minimax(b,depth,isMax) {
+    if (checkWin("O")) return 10-depth;
+    if (checkWin("X")) return depth-10;
+    if (!b.includes("")) return 0;
+
+    if (isMax) {
+        let best = -Infinity;
+        b.forEach((v,i)=>{
+            if (v==="") {
+                b[i]="O";
+                best = Math.max(best, minimax(b,depth+1,false));
+                b[i]="";
+            }
+        });
+        return best;
+    } else {
+        let best = Infinity;
+        b.forEach((v,i)=>{
+            if (v==="") {
+                b[i]="X";
+                best = Math.min(best, minimax(b,depth+1,true));
+                b[i]="";
+            }
+        });
+        return best;
+    }
 }
 
 /* ---------- MULTIPLAYER ---------- */
@@ -133,20 +226,9 @@ function createRoom() {
     mode = "mp";
     mySymbol = "X";
 
-    peer = new SimplePeer({
-        initiator: true,
-        trickle: false,
-        config: {
-            iceServers: [{ urls: "wss://tracker.openwebtorrent.com" }]
-        }
-    });
-
-    peer.on("signal", data => {
-        const code = btoa(JSON.stringify(data));
-        alert("Room Code:\n" + code);
-    });
-
-    peer.on("data", data => syncState(JSON.parse(data)));
+    peer = new SimplePeer({ initiator:true, trickle:false });
+    peer.on("signal", d => alert("Room Code:\n"+btoa(JSON.stringify(d))));
+    peer.on("data", d => syncState(JSON.parse(d)));
     statusText.textContent = "Waiting for player...";
 }
 
@@ -158,22 +240,15 @@ function joinRoom() {
     const code = document.getElementById("roomInput").value;
     if (!code) return alert("Enter room code");
 
-    peer = new SimplePeer({
-        initiator: false,
-        trickle: false,
-        config: {
-            iceServers: [{ urls: "wss://tracker.openwebtorrent.com" }]
-        }
-    });
-
+    peer = new SimplePeer({ initiator:false, trickle:false });
     peer.signal(JSON.parse(atob(code)));
-    peer.on("data", data => syncState(JSON.parse(data)));
+    peer.on("data", d => syncState(JSON.parse(d)));
     statusText.textContent = "Connected!";
 }
 
-function syncState(data) {
-    board = data.board;
-    currentPlayer = data.currentPlayer;
+function syncState(d) {
+    board = d.board;
+    currentPlayer = d.currentPlayer;
     updateUI();
     statusText.textContent =
         currentPlayer === mySymbol ? "Your turn" : "Opponent's turn";
