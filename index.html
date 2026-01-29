@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tic Tac Toe – Multiplayer</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: white;
+    text-align: center;
+}
+
+h1 { margin-top: 20px; }
+
+button, input {
+    padding: 10px 14px;
+    margin: 6px;
+    font-size: 16px;
+    border-radius: 6px;
+    border: none;
+}
+
+button {
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover { background: #1d4ed8; }
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(3, 100px);
+    gap: 10px;
+    justify-content: center;
+    margin: 20px auto;
+}
+
+.cell {
+    width: 100px;
+    height: 100px;
+    background: #1e293b;
+    font-size: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 10px;
+}
+
+.cell:hover { background: #334155; }
+
+#status { margin-top: 10px; font-size: 18px; }
+</style>
+</head>
+
+<body>
+
+<h1>Tic Tac Toe</h1>
+
+<button onclick="startVsComputer()">Play vs Computer</button>
+<button onclick="createRoom()">Create Multiplayer Room</button>
+
+<br>
+<input id="roomInput" placeholder="Enter Room Code">
+<button onclick="joinRoom()">Join Room</button>
+
+<p id="status"></p>
+
+<div class="board">
+    <div class="cell" data-i="0"></div>
+    <div class="cell" data-i="1"></div>
+    <div class="cell" data-i="2"></div>
+    <div class="cell" data-i="3"></div>
+    <div class="cell" data-i="4"></div>
+    <div class="cell" data-i="5"></div>
+    <div class="cell" data-i="6"></div>
+    <div class="cell" data-i="7"></div>
+    <div class="cell" data-i="8"></div>
+</div>
+
+<button onclick="resetGame()">Reset</button>
+
+<!-- Simple Peer (WebRTC) -->
+<script src="https://unpkg.com/simple-peer/simplepeer.min.js"></script>
+
+<script>
+let board = Array(9).fill("");
+let currentPlayer = "X";
+let mode = null;
+let peer = null;
+let mySymbol = "X";
+
+const cells = document.querySelectorAll(".cell");
+const statusText = document.getElementById("status");
+
+cells.forEach(c => c.onclick = () => makeMove(c.dataset.i));
+
+const wins = [
+ [0,1,2],[3,4,5],[6,7,8],
+ [0,3,6],[1,4,7],[2,5,8],
+ [0,4,8],[2,4,6]
+];
+
+function updateUI() {
+    cells.forEach((c,i)=>c.textContent = board[i]);
+}
+
+function checkWin(p) {
+    return wins.some(w => w.every(i => board[i] === p));
+}
+
+/* ---------- COMPUTER MODE ---------- */
+function startVsComputer() {
+    resetGame();
+    mode = "ai";
+    statusText.textContent = "You are X";
+}
+
+function aiMove() {
+    let empty = board.map((v,i)=>v==""?i:null).filter(v=>v!==null);
+    if (empty.length === 0) return;
+    let m = empty[Math.floor(Math.random()*empty.length)];
+    board[m] = "O";
+    updateUI();
+}
+
+/* ---------- MULTIPLAYER ---------- */
+function createRoom() {
+    resetGame();
+    mode = "mp";
+    mySymbol = "X";
+
+    peer = new SimplePeer({
+        initiator: true,
+        trickle: false,
+        config: {
+            iceServers: [{ urls: "wss://tracker.openwebtorrent.com" }]
+        }
+    });
+
+    peer.on("signal", data => {
+        const code = btoa(JSON.stringify(data));
+        alert("Room Code:\n" + code);
+    });
+
+    peer.on("data", data => syncState(JSON.parse(data)));
+    statusText.textContent = "Waiting for player...";
+}
+
+function joinRoom() {
+    resetGame();
+    mode = "mp";
+    mySymbol = "O";
+
+    const code = document.getElementById("roomInput").value;
+    if (!code) return alert("Enter room code");
+
+    peer = new SimplePeer({
+        initiator: false,
+        trickle: false,
+        config: {
+            iceServers: [{ urls: "wss://tracker.openwebtorrent.com" }]
+        }
+    });
+
+    peer.signal(JSON.parse(atob(code)));
+    peer.on("data", data => syncState(JSON.parse(data)));
+    statusText.textContent = "Connected!";
+}
+
+function syncState(data) {
+    board = data.board;
+    currentPlayer = data.currentPlayer;
+    updateUI();
+    statusText.textContent =
+        currentPlayer === mySymbol ? "Your turn" : "Opponent's turn";
+}
+
+/* ---------- GAME LOGIC ---------- */
+function makeMove(i) {
+    if (board[i] !== "") return;
+    if (mode === "mp" && currentPlayer !== mySymbol) return;
+
+    board[i] = currentPlayer;
+    currentPlayer = currentPlayer === "X" ? "O" : "X";
+    updateUI();
+
+    if (checkWin(board[i])) {
+        statusText.textContent = board[i] + " wins!";
+        return;
+    }
+
+    if (mode === "ai" && currentPlayer === "O") {
+        setTimeout(() => {
+            aiMove();
+            currentPlayer = "X";
+        }, 300);
+    }
+
+    if (mode === "mp") {
+        peer.send(JSON.stringify({ board, currentPlayer }));
+    }
+}
+
+function resetGame() {
+    board = Array(9).fill("");
+    currentPlayer = "X";
+    updateUI();
+    statusText.textContent = "";
+}
+</script>
+
+</body>
+</html>
